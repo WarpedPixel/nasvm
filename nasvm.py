@@ -56,7 +56,11 @@ async def start_vm():
         if debug:
             print(f"< {query_result}")
         vm_list = json.loads(query_result)["result"]
-        print (vm_list)
+        # print (vm_list)
+        print (f"{'ID':>4} {'Name':12.12} {'PID':>6} {'Description':40.40}")
+        for vm in vm_list:
+            pid = vm['status']['pid'] or '[none]'
+            print (f"{vm['id']:>4} {vm['name']:12.12} {pid:>6} {vm['description']:40.40}")
 
         # # List status of vm #1
         # await websocket.send(json.dumps({
