@@ -63,51 +63,54 @@ async def nas_create_session(server, websocket):
 
     return session
 
+async def __call_method(websocket, sessionID, methodname, params):
+    await websocket.send(json.dumps({
+        "id": sessionID,
+        "msg": "method",
+        "method": methodname,
+        "params": params
+        }))
+    query_result = await websocket.recv()
+    if args.verbosity >= 3:
+        print(f"< {query_result}")
+    
+    try:
+        call_result = json.loads(query_result)["result"]
+        return call_result
+    except:
+        print(f"{PROGNAME}: {methodname} failed")
+        errormsg = json.loads(query_result)["error"]["reason"]
+        print(f"{PROGNAME}: {errormsg}")
+        return None
+
+
 async def nas_list_vms(server):
     async with websockets.connect(nas_socketname(server)) as websocket:
         session = await nas_create_session(server, websocket)
 
-        if session:
-            # Will print out all your vms and their info, find the id you need
-            await websocket.send(json.dumps({
-                "id": session,
-                "msg": "method",
-                "method": "vm.query",
-                "params": []
-                }))
-            query_result = await websocket.recv()
-            if args.verbosity >= 3:
-                print(f"< {query_result}")
-            vm_list = json.loads(query_result)["result"]
+        if not session:
+            return
 
-            print (f"{'ID':>4} {'Name':12.12} {'PID':>6} {'Description':40.40}")
-            for vm in vm_list:
-                pid = vm['status']['pid'] or '[none]'
-                print (f"{vm['id']:>4} {vm['name']:12.12} {pid:>6} {vm['description']:40.40}")
+        # Will print out all your vms and their info, find the id you need
+        vm_list = await __call_method(websocket, session, "vm.query", [])
+
+        print (f"{'ID':>4} {'Name':12.12} {'PID':>6} {'Description':40.40}")
+        for vm in vm_list:
+            pid = vm['status']['pid'] or '[none]'
+            print (f"{vm['id']:>4} {vm['name']:12.12} {pid:>6} {vm['description']:40.40}")
 
 async def nas_start_vm(server, id_list, overcommit):
     async with websockets.connect(nas_socketname(server)) as websocket:
         session = await nas_create_session(server, websocket)
 
-        if session:
-            for id in id_list:
-                await websocket.send(json.dumps({
-                    "id": session,
-                    "msg": "method",
-                    "method": "vm.start",
-                    "params": [id, {'overcommit': overcommit}]
-                    }))
-                query_result = await websocket.recv()
-                if args.verbosity >= 3:
-                    print(f"< {query_result}")
-                try:
-                    vm_started = json.loads(query_result)["result"]
-                    if args.verbosity >= 1:
-                        print(f"{PROGNAME}: {vm_started}")
-                except:
-                    print(f"{PROGNAME}: vm start failed")
-                    errormsg = json.loads(query_result)["error"]["reason"]
-                    print(f"{PROGNAME}: {errormsg}")
+        if not session:
+            return
+
+        for id in id_list:
+            vm_started = await __call_method(websocket, session, "vm.start", [id, {'overcommit': overcommit}])
+            if vm_started:
+                if args.verbosity >= 1:
+                    print(f"{PROGNAME}: {vm_started}")
             
 
 async def nas_restart_vm(server, id_list):
@@ -122,23 +125,10 @@ async def nas_restart_vm(server, id_list):
             return 
 
         for id in id_list:
-            await websocket.send(json.dumps({
-                "id": session,
-                "msg": "method",
-                "method": "vm.restart",
-                "params": [id]
-                }))
-            query_result = await websocket.recv()
-            if args.verbosity >= 3:
-                print(f"< {query_result}")
-            try:
-                vm_restarted = json.loads(query_result)["result"]
+            vm_restarted = await __call_method(websocket, session, "vm.restart", [id])
+            if vm_restarted:
                 if args.verbosity >= 1:
                     print(f"{PROGNAME}: {vm_restarted}")
-            except:
-                print(f"{PROGNAME}: vm restart failed")
-                errormsg = json.loads(query_result)["error"]["reason"]
-                print(f"{PROGNAME}: {errormsg}")
             
 
 async def nas_halt_vm(server, id_list):
@@ -153,24 +143,11 @@ async def nas_halt_vm(server, id_list):
             return 
 
         for id in id_list:
-            await websocket.send(json.dumps({
-                "id": session,
-                "msg": "method",
-                "method": "vm.stop",
-                "params": [id]
-                }))
-            query_result = await websocket.recv()
-            if args.verbosity >= 3:
-                print(f"< {query_result}")
-            try:
-                vm_halted = json.loads(query_result)["result"]
+            vm_halted = await __call_method(websocket, session, "vm.stop", [id])
+            if vm_halted:
                 if args.verbosity >= 1:
                     print(f"{PROGNAME}: {vm_halted}")
-            except:
-                print(f"{PROGNAME}: vm halt failed")
-                errormsg = json.loads(query_result)["error"]["reason"]
-                print(f"{PROGNAME}: {errormsg}")
-            
+           
 
 async def nas_shutdown_vm(server, id_list):
     async with websockets.connect(nas_socketname(server)) as websocket:
@@ -180,25 +157,11 @@ async def nas_shutdown_vm(server, id_list):
             return
 
         for id in id_list:
-            await websocket.send(json.dumps({
-                "id": session,
-                "msg": "method",
-                "method": "vm.status",
-                "params": [id]
-                }))
-            query_result = await websocket.recv()
-            if args.verbosity >= 3:
-                print(f"< {query_result}")
-
-            try:
-                pid = json.loads(query_result)["result"]["pid"]
-            except:
-                print(f"{PROGNAME}: vm shutdown failed")
-                errormsg = json.loads(query_result)["error"]["reason"]
-                print(f"{PROGNAME}: {errormsg}")
-            finally:
+            vm_status = await __call_method(websocket, session, "vm.status", [id])
+            if vm_status:
+                pid = vm_status["pid"]
                 # BUG: this only works on the local server, need to find a way to ssh this overor use a different protocol command
-                if os.system(f"kill -TERM {pid}") != 0:
+                if os.system(f"echo kill -TERM {pid}") != 0:
                     print(f"{PROGNAME}: vm shutdown failed (signaling {pid})")
 
 
@@ -211,44 +174,17 @@ async def nas_get_vm_vnc (server, id_list):
 
         print (f"{'ID':>4} {'Port':>6} {'Resolution':10} {'URL'}")
         for id in id_list:
-            await websocket.send(json.dumps({
-                "id": session,
-                "msg": "method",
-                "method": "vm.get_vnc",
-                "params": [id]
-                }))
-            query_result = await websocket.recv()
-            if args.verbosity >= 3:
-                print(f"< {query_result}")
-            try:
-                vnc_list = json.loads(query_result)["result"]
+            vnc_list = await __call_method(websocket, session, "vm.get_vnc", [id])
+            if vnc_list:
                 if args.verbosity >= 1:
                     print(f"{PROGNAME}: {vnc_list}")
-            except:
-                print(f"{PROGNAME}: vm vnc failed")
-                errormsg = json.loads(query_result)["error"]["reason"]
-                print(f"{PROGNAME}: {errormsg}")
 
-            await websocket.send(json.dumps({
-                "id": session,
-                "msg": "method",
-                "method": "vm.get_vnc_web",
-                "params": [id]
-                }))
-            query_result = await websocket.recv()
-            if args.verbosity >= 3:
-                print(f"< {query_result}")
-            try:
-                vnc_url_list = json.loads(query_result)["result"]
+            vnc_url_list = await __call_method(websocket, session, "vm.get_vnc_web", [id])
+            if vnc_url_list:
                 if args.verbosity >= 1:
-                    print(f"{PROGNAME}: {vnc_url}")
-            except:
-                print(f"{PROGNAME}: vm vnc failed")
-                errormsg = json.loads(query_result)["error"]["reason"]
-                print(f"{PROGNAME}: {errormsg}")
+                    print(f"{PROGNAME}: {vnc_url_list}")
 
             print (f"{id:>4} {vnc_list[0]['vnc_port']:>6} {vnc_list[0]['vnc_resolution']:10.10} {vnc_url_list[0]}")
-            
 
 
 def cmd_list(args):
