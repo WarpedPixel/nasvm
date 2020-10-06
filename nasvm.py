@@ -11,6 +11,8 @@ import argparse
 def nas_socketname(server):
     return f"ws://{server}/websocket"
 
+# TODO: this is hardcoded to version 1 of the protocol so it works with TrueNAS 11.3
+
 # creates an authenticated API session, returns the ID for further calls
 async def nas_create_session(server, websocket):
     await websocket.send(json.dumps({
@@ -172,7 +174,9 @@ async def nas_get_vm_vnc (server, id_list):
         if not session:
             return
 
-        print (f"{'ID':>4} {'Port':>6} {'Resolution':10} {'URL'}")
+        if not args.vncport and not args.vncurl:
+            print (f"{'ID':>4} {'Port':>6} {'Resolution':10} {'URL'}")
+
         for id in id_list:
             vnc_list = await __call_method(websocket, session, "vm.get_vnc", [id])
             if vnc_list:
@@ -184,7 +188,14 @@ async def nas_get_vm_vnc (server, id_list):
                 if args.verbosity >= 1:
                     print(f"{PROGNAME}: {vnc_url_list}")
 
-            print (f"{id:>4} {vnc_list[0]['vnc_port']:>6} {vnc_list[0]['vnc_resolution']:10.10} {vnc_url_list[0]}")
+            vnc_port = vnc_list[0]['vnc_port']
+            vnc_url = vnc_url_list[0]
+            if args.vncport:
+                print (vnc_port)
+            elif args.vncurl:
+                print (vnc_url)
+            else:
+                print (f"{id:>4} {vnc_port:>6} {vnc_list[0]['vnc_resolution']:10.10} {vnc_url}")
 
 
 def cmd_list(args):
@@ -203,7 +214,7 @@ def cmd_restart(args):
     if args.verbosity >= 3:
         print("RESTART")
         print (args)
-    asyncio.get_event_loop().run_until_complete(nas_restart_vm(args.server, args.vm, args.overprovision))
+    asyncio.get_event_loop().run_until_complete(nas_restart_vm(args.server, args.vm))
 
 def cmd_halt(args):
     if args.verbosity >= 3:
@@ -267,9 +278,12 @@ parser_shut = subparsers.add_parser('shutdown', aliases=['shut'], help="attempts
 parser_shut.add_argument("vm", metavar="VM", type=int, nargs='+', help=f"vm identifiers (get with {PROGNAME} list)")
 parser_shut.set_defaults(func=cmd_shutdown)
 
-parser_shut = subparsers.add_parser('vnc', help="list VNC attributes of given VMs")
-parser_shut.add_argument("vm", metavar="VM", type=int, nargs='+', help=f"vm identifiers (get with {PROGNAME} list)")
-parser_shut.set_defaults(func=cmd_vnc)
+parser_vnc = subparsers.add_parser('vnc', help="list VNC attributes of given VMs")
+parser_vnc_group = parser_vnc.add_mutually_exclusive_group()
+parser_vnc_group.add_argument("--url", dest='vncurl', action="store_true", help="print only the url")
+parser_vnc_group.add_argument("--port", dest='vncport', action="store_true", help="print only the port number")
+parser_vnc.add_argument("vm", metavar="VM", type=int, nargs='+', help=f"vm identifiers (get with {PROGNAME} list)")
+parser_vnc.set_defaults(func=cmd_vnc)
 
 args = parser.parse_args()
 

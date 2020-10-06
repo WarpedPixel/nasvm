@@ -88,6 +88,19 @@ MacOS). You can manage that with the cross platform command 'keyring' using serv
 name 'NAS API'. Note that in FreeNAS up to 11.3-U4.1 only root can call the API.
 ```
 
+```
+$ nasvm vnc --help
+usage: nasvm vnc [-h] [--url | --port] VM [VM ...]
+
+positional arguments:
+  VM          vm identifiers (get with nasvm list)
+
+optional arguments:
+  -h, --help  show this help message and exit
+  --url       print only the url
+  --port      print only the port number
+```
+
 ## Implementation Notes
 
 This is distributed as complete source you execute directly with your Python interpreter
